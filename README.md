@@ -2,11 +2,15 @@
 This is a simple proof of concept of a blockchain written in python
 
 ## ToDos
-- Load blocks from file
+- Load chain from block-files
 - implement transactions
 - implement smart contracts
+- implement automatic difficulty adjustment
+- implement mining rewards
+- implement networking capabilitys
+- implement blockchain validation
 
 ## What it can do
-- Safe chain to block-files
-- Correctly create hashes using given difficulty
-- Create new blocks with given data
+- Store chain as block-files locally
+- proof of work with hashes and difficulty
+- create correctly chained blocks
