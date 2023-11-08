@@ -1,10 +1,20 @@
 import hashlib
 import time
 import pickle
+from os.path import exists
+import os
+###Settings for this script
+miningdifficulty = 5            #Set mining difficulty
+blockchainfolder = "blockchain" #Set path to blockchain folder
+showInfo = True                 #Enable information messages in console
 
-miningdifficulty = 5
-blockchainfolder = "blockchain"
+def info(information):
+    if showInfo:
+        print("[INFO] " + information)
 
+def validProof(block):
+    guessHash = block.hash()
+    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
 
 class Block:
     def __init__(self, index, prevHash, timestamp, data, proof):
@@ -26,7 +36,17 @@ class Block:
 class Blockchain:
     def __init__(self):
         self.chain = []
-        self.create_genesis_block()
+        if (exists(blockchainfolder)):
+            if (exists(blockchainfolder + "/0")):
+                info("Blockchain found")
+                self.load()
+            else:
+                info("No Blockchain found")
+                self.create_genesis_block()
+        else:
+            info("No Blockchain found")
+            os.mkdir(blockchainfolder)
+
 
     def create_genesis_block(self):
         genesis = Block(0, "0", int(time.time()), "Genesis Block", 0)
@@ -46,25 +66,32 @@ class Blockchain:
             proof += 1
             if(validProof(newBlock)):
                 break
-
         self.chain.append(newBlock)
 
     def dump(self):
         for block in self.chain:
             block.dump()
 
-def validProof(block):
-    guessHash = block.hash()
-    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
+    def load(self):
+        nBlock = 0
+        while True:
+            if exists(blockchainfolder+"/"+str(nBlock)):
+                nBlock += 1
+            else:
+                break
+        nBlock -= 1
+        for i in range(nBlock):
+            with open(blockchainfolder+"/"+str(nBlock), 'rb') as file:
+                block = pickle.load(file)
+            self.chain.append(block)
+        info(str(nBlock) + " blocks loaded")
 
-if __name__ == "__main__":
+if __name__ == "__main__":  #Main function
     blockchain = Blockchain()
 
     while True:
         lastBlock = blockchain.get_last_block()
         blockchain.addBlock("Block #" + str(lastBlock.index))
-        print(lastBlock.index)
-        print(lastBlock.prevHash)
-        if lastBlock.index==100:
-            break
+        info("Block #" + str(lastBlock.index) + " mined with hash " + str(lastBlock.hash()))
     blockchain.dump()
+    info("Blockchain saved")
