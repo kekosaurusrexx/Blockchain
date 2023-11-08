@@ -4,7 +4,6 @@ It aims to correctly implement a blockchain with mining, transactions, smart con
 Written for a university project.
 
 ## ToDos
-- Load chain from block-files
 - implement transactions
 - implement smart contracts
 - implement automatic difficulty adjustment
@@ -16,6 +15,6 @@ Written for a university project.
 - add a requirements file
 
 ## What it can do
-- Store chain as block-files locally
+- load & save chain as block-files locally
 - proof of work with hashes and difficulty
 - create correctly chained blocks
