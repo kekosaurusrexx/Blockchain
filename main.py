@@ -1,7 +1,10 @@
 import hashlib
 import time
+import pickle
 
 miningdifficulty = 5
+blockchainfolder = "blockchain"
+
 
 class Block:
     def __init__(self, index, prevHash, timestamp, data, proof):
@@ -15,21 +18,10 @@ class Block:
         block_string = f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"
         return hashlib.sha256(block_string.encode()).hexdigest()
 
-    def getdict(self):
-        return {
-            'index': self.index,
-            'prevHash': self.prevHash,
-            'timestamp': self.timestamp,
-            'data': self.data,
-            'proof': self.proof
-        }
-    def setloaddict(self, dictonary):
-        self.index = dictonary["index"]
-        self.prevHash = dictonary["prevHash"]
-        self.timestamp = dictonary["timestamp"]
-        self.data = dictonary["data"]
-        self.proof = dictonary["proof"]
-
+    def dump(self):
+        output = open(blockchainfolder + "/" + str(self.index), "wb")
+        pickle.dump(self, output)
+        output.close()
 
 class Blockchain:
     def __init__(self):
@@ -43,35 +35,36 @@ class Blockchain:
     def get_last_block(self):
         return self.chain[-1]
 
-    def add_block(self, data, proof):
+    def addBlock(self, data):
         index = len(self.chain)
-        previous_hash = self.get_last_block().hash()
+        prevHash = self.get_last_block().hash()
         timestamp = int(time.time())
-        new_block = Block(index, previous_hash, timestamp, data, proof)
-        self.chain.append(new_block)
 
-    def dict(self):
-        return [block.getdict() for block in self.chain]
+        proof = 0
+        while True:
+            newBlock = Block(index, prevHash, timestamp, data, proof)
+            proof += 1
+            if(validProof(newBlock)):
+                break
 
-def proof_of_work(last_proof):
-    proof = 0
-    while not is_valid_proof(last_proof, proof):
-        proof += 1
-    return proof
+        self.chain.append(newBlock)
 
-def is_valid_proof(last_proof, proof):
-    guess = f"{last_proof}{proof}".encode()
-    guess_hash = hashlib.sha256(guess).hexdigest()
-    return guess_hash[:miningdifficulty] == "0"*miningdifficulty
+    def dump(self):
+        for block in self.chain:
+            block.dump()
+
+def validProof(block):
+    guessHash = block.hash()
+    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
 
 if __name__ == "__main__":
     blockchain = Blockchain()
-    last_block = blockchain.get_last_block()
-    last_proof = 0
 
     while True:
-        proof = proof_of_work(last_proof)
-        blockchain.add_block(f"Block #{last_block.index + 1}", proof)
-        last_block = blockchain.get_last_block()
-        last_proof = proof
-        print(last_block.getdict())
+        lastBlock = blockchain.get_last_block()
+        blockchain.addBlock("Block #" + str(lastBlock.index))
+        print(lastBlock.index)
+        print(lastBlock.prevHash)
+        if lastBlock.index==100:
+            break
+    blockchain.dump()
