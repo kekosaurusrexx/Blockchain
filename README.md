@@ -11,6 +11,9 @@ Written for a university project.
 - implement mining rewards
 - implement networking capabilitys
 - implement blockchain validation
+- implement multiprocessing
+- implement multiprocessing-mining
+- add a requirements file
 
 ## What it can do
 - Store chain as block-files locally
