@@ -7,9 +7,11 @@ import keyboard
 import random
 import json
 import rsa
+import threading
 ###Settings for this script
 miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
+keyfile = "keys"                #Set name of key file
 showInfo = True                 #Enable information messages
 showWarn = True                 #Enable warning messages
 showErr = True                  #Enable error messages
@@ -49,6 +51,9 @@ class Block:#Class to create a single block
     def hash(self):
         blockString = f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"
         return hashlib.sha256(blockString.encode()).hexdigest()
+
+    def size(self):
+        return(len(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"))
 
     def dump(self):
         output = open(blockchainfolder + "/" + str(self.index), "wb")
@@ -174,6 +179,21 @@ class Keypair:#Class to store and use keypairs
         self.privateKey = rsa.PrivateKey.load_pkcs1(privateKeyStr)
         self.string()
 
+    def dump(self,filename):
+        output = open(filename, "wb")
+        pickle.dump(self, output)
+        output.close()
+
+    def load(self,filename):
+        with open(filename, 'rb') as file:
+            loadedkey = pickle.load(file)
+            file.close()
+        self.publicKey = loadedkey.publicKey
+        self.publicKeyStr = loadedkey.publicKeyStr
+        self.privateKey = loadedkey.privateKey
+        self.privateKeyStr = loadedkey.privateKeyStr
+
+
 class Transaction:#Class to store and execute a transaction
     def __init__(self, sender, receiver, value):
         self.sender = sender
@@ -191,32 +211,44 @@ class Transaction:#Class to store and execute a transaction
     def sign(self, keypair):
         self.signature = keypair.sign(self.hash())
 
-info("Creating Keypair 1")
-keypair1 = Keypair()
-keypair1.new()
+def mining():
+    sys("Mining thread active")
+    while True and enableMining:    #Main mining-loop
+        lastBlock = blockchain.get_last_block()
+        data = Data()
+        data.newText("Block #" + str(lastBlock.index), "Kekosaurusrexx")
+        blockchain.addBlock(data.dump())
+        if(exitMining):
+            break
+    blockchain.dump()
+    sys("Blockchain saved")
 
+#Check for miner-keyfile
+minerkeys = Keypair()
+if(exists(keyfile)):
+    info("Keyfile found")
+    try:
+        minerkeys.load(keyfile)
+    except:
+        err("Could not load existing keyfile")
+else:
+    info("New keys are generated")
+    minerkeys = Keypair()
+    minerkeys.new()
+    minerkeys.dump(keyfile)
+
+exitMining = False
 #Blockchain and mining loop
 if __name__ == "__main__" and enableBlockchain:
     blockchain = Blockchain()       #Setup Blockchain
     if not blockchain.validate():   #Validate Blockchain
         err("Blockchain invalid")
 
-    while True and enableMining:    #Main mining-loop
-        lastBlock = blockchain.get_last_block()
-        data = Data()
-        #Trigger a transaction by pressing t
-        if (keyboard.is_pressed("t")):
-            sys("Transaction triggered")
-            transaction = Transaction("A", "B", "1000")
-            transaction.sign(keypair1)
-            data.newTransaction(transaction)
-        #New Block gets created and mined
-        data.newText("Block #" + str(lastBlock.index), "Kekosaurusrexx")
-        blockchain.addBlock(data.dump())
-        #Quit loop by pressing q
-        if(keyboard.is_pressed("q")):
-            sys("Quitting...")
-            break
+    miningThread = threading.Thread(target=mining)
+    miningThread.start()
 
-    blockchain.dump()
-    sys("Blockchain saved")
+    while True:
+        if(keyboard.is_pressed("q")):
+            exitMining = True
+            miningThread.join()
+            break
