@@ -4,7 +4,6 @@ It aims to correctly implement a blockchain with mining, transactions, smart con
 Written for a university project.
 
 ## ToDos
-- implement transactions
 - implement smart contracts
 - implement automatic difficulty adjustment
 - implement mining rewards
@@ -18,3 +17,6 @@ Written for a university project.
 - proof of work with hashes and difficulty
 - create correctly chained blocks
 - validate the blockchain
+- sign and verify data
+- sign and verify transactions
+- add transactions to blockchain
