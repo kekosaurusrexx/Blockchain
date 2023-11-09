@@ -8,7 +8,6 @@ Written for a university project.
 - implement automatic difficulty adjustment
 - implement mining rewards
 - implement networking capabilitys
-- implement multiprocessing
 - implement multiprocessing-mining
 - add a requirements file
 
@@ -20,3 +19,4 @@ Written for a university project.
 - sign and verify data
 - sign and verify transactions
 - add transactions to blockchain
+- mine in a seperate thread
