@@ -9,7 +9,6 @@ Written for a university project.
 - implement automatic difficulty adjustment
 - implement mining rewards
 - implement networking capabilitys
-- implement blockchain validation
 - implement multiprocessing
 - implement multiprocessing-mining
 - add a requirements file
@@ -18,3 +17,4 @@ Written for a university project.
 - load & save chain as block-files locally
 - proof of work with hashes and difficulty
 - create correctly chained blocks
+- validate the blockchain
