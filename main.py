@@ -3,14 +3,32 @@ import time
 import pickle
 from os.path import exists
 import os
+import keyboard
+import random
 ###Settings for this script
 miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
-showInfo = True                 #Enable information messages in console
+showInfo = True                 #Enable information messages
+showWarn = True                 #Enable warning messages
+showErr = True                  #Enable error messages
+showSys = True                  #Enable system messages
 
 def info(information):
     if showInfo:
         print("[INFO] " + information)
+
+def warning(warning):
+    if showWarn:
+        print("[WARN] " + warning)
+
+def err(error):
+    if showErr:
+        print("[ERR] " + error)
+    exit()
+
+def sys(sysmsg):
+    if showSys:
+        print("[SYS] " + sysmsg)
 
 def validProof(block):
     guessHash = block.hash()
@@ -33,23 +51,23 @@ class Block:
         pickle.dump(self, output)
         output.close()
 
+
 class Blockchain:
     def __init__(self):
         self.chain = []
         if (exists(blockchainfolder)):
             if (exists(blockchainfolder + "/0")):
-                info("Blockchain found")
                 self.load()
             else:
-                info("No Blockchain found")
+                sys("No Blockchain found")
                 self.create_genesis_block()
         else:
-            info("No Blockchain found")
+            sys("No Blockchain found")
             os.mkdir(blockchainfolder)
-
 
     def create_genesis_block(self):
         genesis = Block(0, "0", int(time.time()), "Genesis Block", 0)
+        info("Genesis block created")
         self.chain.append(genesis)
 
     def get_last_block(self):
@@ -59,14 +77,19 @@ class Blockchain:
         index = len(self.chain)
         prevHash = self.get_last_block().hash()
         timestamp = int(time.time())
-
-        proof = 0
+        counter = 0
+        beginTime = time.time()
         while True:
+            proof = random.randint(0,999999999999999)
             newBlock = Block(index, prevHash, timestamp, data, proof)
-            proof += 1
+            counter += 1
             if(validProof(newBlock)):
+                endTime = time.time()
+                usedTime= endTime-beginTime
+                hashSpeed = counter/usedTime
+                info("Block #" + str(index) + " mined with Hashspeed: " + str(round(hashSpeed/1000)) + "kH/s")
+                self.chain.append(newBlock)
                 break
-        self.chain.append(newBlock)
 
     def dump(self):
         for block in self.chain:
@@ -81,17 +104,34 @@ class Blockchain:
                 break
         nBlock -= 1
         for i in range(nBlock):
-            with open(blockchainfolder+"/"+str(nBlock), 'rb') as file:
+            with open(blockchainfolder+"/"+str(i), 'rb') as file:
                 block = pickle.load(file)
+                file.close()
             self.chain.append(block)
-        info(str(nBlock) + " blocks loaded")
+        sys(str(nBlock) + " blocks loaded")
 
-if __name__ == "__main__":  #Main function
+    def validate(self):
+        for i in range(1,len(self.chain)):
+            if not self.chain[i].prevHash==self.chain[i-1].hash():
+                return False
+        return True
+
+if __name__ == "__main__":
     blockchain = Blockchain()
-
+    #Validate Blockchain loaded from files
+    if blockchain.validate():
+        sys("Blockchain validated")
+    else:
+        err("Blockchain invalid")
+    #Main loop
     while True:
         lastBlock = blockchain.get_last_block()
-        blockchain.addBlock("Block #" + str(lastBlock.index))
-        info("Block #" + str(lastBlock.index) + " mined with hash " + str(lastBlock.hash()))
+        data = "Block #" + str(lastBlock.index)
+        blockchain.addBlock(data)
+
+
+        if(keyboard.is_pressed("q")):
+            break
+
     blockchain.dump()
-    info("Blockchain saved")
+    sys("Blockchain saved")
