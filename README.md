@@ -6,11 +6,12 @@ Written for a university project.
 ## ToDos
 - implement smart contracts
 - implement automatic difficulty adjustment
-- implement mining rewards
 - implement networking capabilitys
 - implement multiprocessing-mining
 - add a requirements file
 - change formatting of signature
+- coin-balances and working transactions
+- limit data in blocks to 1kb
 
 ## What it can do
 - load & save chain as block-files locally
