@@ -8,9 +8,9 @@ import json
 import rsa
 import threading
 ###Settings for this script
-miningdifficulty = 4            #Set mining difficulty
+miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
-dataperblock = 2                #Number of datapoints per block
+dataperblock = 4                #Number of datapoints per block
 keyfile = "keys"                #Set name of key file
 showInfo = True                 #Enable information messages
 showWarn = True                 #Enable warning messages
@@ -40,24 +40,24 @@ def sys(sysmsg):
     if showSys:
         print("[SYS] " + sysmsg)
 
-def validProof(block):
-    guessHash = block.hash()
-    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
-
 class Block:#Class to create a single block
     def __init__(self, index, prevHash, timestamp, data, proof):
         self.index = index
         self.prevHash = prevHash
         self.timestamp = timestamp
         self.data = data
+        self.dataHash = ""
         self.proof = proof
 
     def hash(self):
-        blockString = f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"
+        blockString = f"{self.index}{self.prevHash}{self.timestamp}{self.dataHash}{self.proof}"
         return hashlib.sha256(blockString.encode()).hexdigest()
 
+    def hashData(self):
+        self.dataHash = hashlib.sha256(self.data.encode()).hexdigest()
+
     def size(self):
-        return(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}")
+        return(len(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"))
 
     def dump(self):
         output = open(blockchainfolder + "/" + str(self.index), "wb")
@@ -90,17 +90,19 @@ class Blockchain:#Class to store and use the blockchain
         prevHash = self.get_last_block().hash()
         timestamp = int(time.time())
         counter = 0
-        beginTime = time.time()
+        proof = 0
+        newBlock = Block(index, prevHash, timestamp, data, proof)
+        newBlock.hashData()
         while True:
             proof = random.randint(0,999999999999999)
-            newBlock = Block(index, prevHash, timestamp, data, proof)
+            newBlock.proof = proof
             counter += 1
             if(validProof(newBlock)):
                 endTime = time.time()
                 try:
-                    usedTime= endTime-beginTime
+                    usedTime= endTime-timestamp
                     hashSpeed = counter/usedTime
-                    info("Block #" + str(index) + " mined with Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s")
+                    info("Block #" + str(index) + " mined | Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s in " + str(round(usedTime,2)) + "s | Size: " + str(newBlock.size()) + " bytes")
                 except:
                     warning("Could not calculate Hashspeed")
                 self.chain.append(newBlock)
@@ -141,6 +143,10 @@ class Data:#Class to create and store block-data
 
     def add(self, newData):
         self.datachain.append(newData)
+
+    def minerData(self, adress):
+        minerData = {"type": "miner", "adress": adress}
+        self.add(minerData)
 
     def newText(self, text, sender):
         textData = {"type": "text", "sender": sender, "content": str(text)}
@@ -217,12 +223,16 @@ class Transaction:#Class to store and execute a transaction
     def sign(self, keypair):
         self.signature = keypair.sign(self.hash())
 
+def validProof(block):
+    guessHash = block.hash()
+    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
+
 def mining():
     sys("Mining thread active")
     while True:
         lastBlock = blockchain.get_last_block()
         data = Data()
-        data.newText("Block #" + str(lastBlock.index), "Kekosaurusrexx")
+        data.minerData(minerKeys.publicKeyStr)
         for datapoint in getNewData():
             data.add(datapoint)
         blockchain.addBlock(data.dump())
@@ -254,18 +264,17 @@ def getNewData():
 
 #Blockchain and mining loop
 if __name__ == "__main__":
-    minerkeys = Keypair()
+    minerKeys = Keypair()
     if (exists(keyfile)):
         sys("Keyfile found")
         try:
-            minerkeys.load(keyfile)
+            minerKeys.load(keyfile)
         except exception:
             err("Could not load minerkeys")
     else:
         sys("New keys are generated")
-        minerkeys = Keypair()
-        minerkeys.new()
-        minerkeys.dump(keyfile)
+        minerKeys.new()
+        minerKeys.dump(keyfile)
 
     keypair1 = Keypair()
     keypair1.new()
