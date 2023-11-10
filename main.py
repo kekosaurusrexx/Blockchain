@@ -1,5 +1,4 @@
-import hashlib
-import time
+import hashlib, time
 import pickle
 from os.path import exists
 import os
@@ -9,8 +8,9 @@ import json
 import rsa
 import threading
 ###Settings for this script
-miningdifficulty = 5            #Set mining difficulty
+miningdifficulty = 4            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
+dataperblock = 2                #Number of datapoints per block
 keyfile = "keys"                #Set name of key file
 showInfo = True                 #Enable information messages
 showWarn = True                 #Enable warning messages
@@ -18,6 +18,10 @@ showErr = True                  #Enable error messages
 showSys = True                  #Enable system messages
 enableBlockchain = True         #Enable Blockchain, used for development
 enableMining = True             #enable Mining, used for development
+###Predefinded variables
+exitMining = False
+newDataChain = []
+dataLock = False
 
 def info(information):
     if showInfo:
@@ -53,7 +57,7 @@ class Block:#Class to create a single block
         return hashlib.sha256(blockString.encode()).hexdigest()
 
     def size(self):
-        return(len(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"))
+        return(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}")
 
     def dump(self):
         output = open(blockchainfolder + "/" + str(self.index), "wb")
@@ -93,9 +97,12 @@ class Blockchain:#Class to store and use the blockchain
             counter += 1
             if(validProof(newBlock)):
                 endTime = time.time()
-                usedTime= endTime-beginTime
-                hashSpeed = counter/usedTime
-                info("Block #" + str(index) + " mined with Hashspeed: " + str(round(hashSpeed/1000)) + "kH/s")
+                try:
+                    usedTime= endTime-beginTime
+                    hashSpeed = counter/usedTime
+                    info("Block #" + str(index) + " mined with Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s")
+                except:
+                    warning("Could not calculate Hashspeed")
                 self.chain.append(newBlock)
                 break
 
@@ -145,7 +152,7 @@ class Data:#Class to create and store block-data
             "sender": transaction.sender,
             "receiver": transaction.receiver,
             "value": transaction.value,
-            "signature": transaction.signature.decode("utf-8",errors="ignore")}
+            "signature": transaction.signature}
         self.add(transactionData)
 
 class Keypair:#Class to store and use keypairs
@@ -160,11 +167,11 @@ class Keypair:#Class to store and use keypairs
         self.string()
 
     def string(self):
-        self.publicKeyStr = rsa.PublicKey.save_pkcs1(self.publicKey).decode('utf-8')
-        self.privateKeyStr = rsa.PrivateKey.save_pkcs1(self.privateKey).decode('utf-8')
+        self.publicKeyStr = rsa.PublicKey.save_pkcs1(self.publicKey).decode("utf-8")
+        self.privateKeyStr = rsa.PrivateKey.save_pkcs1(self.privateKey).decode("utf-8")
 
     def sign(self, dataToSign):
-        signature = rsa.sign(dataToSign.encode(), self.privateKey, "SHA-256")
+        signature = rsa.sign(dataToSign.encode(), self.privateKey, "SHA-256").decode("latin-1")
         return(signature)
 
     def verify(self, dataToVerify, signature):
@@ -193,7 +200,6 @@ class Keypair:#Class to store and use keypairs
         self.privateKey = loadedkey.privateKey
         self.privateKeyStr = loadedkey.privateKeyStr
 
-
 class Transaction:#Class to store and execute a transaction
     def __init__(self, sender, receiver, value):
         self.sender = sender
@@ -213,42 +219,81 @@ class Transaction:#Class to store and execute a transaction
 
 def mining():
     sys("Mining thread active")
-    while True and enableMining:    #Main mining-loop
+    while True:
         lastBlock = blockchain.get_last_block()
         data = Data()
         data.newText("Block #" + str(lastBlock.index), "Kekosaurusrexx")
+        for datapoint in getNewData():
+            data.add(datapoint)
         blockchain.addBlock(data.dump())
         if(exitMining):
             break
     blockchain.dump()
     sys("Blockchain saved")
 
-#Check for miner-keyfile
-minerkeys = Keypair()
-if(exists(keyfile)):
-    info("Keyfile found")
-    try:
-        minerkeys.load(keyfile)
-    except:
-        err("Could not load existing keyfile")
-else:
-    info("New keys are generated")
-    minerkeys = Keypair()
-    minerkeys.new()
-    minerkeys.dump(keyfile)
+def pushToMiner(data):
+    global dataLock
+    global newDataChain
+    while (dataLock):
+        info("NewData is locked...")
+    newDataChain.append(data.datachain[0])
 
-exitMining = False
+def getNewData():
+    global dataLock
+    global newDataChain
+    i = 0
+    outputChain = []
+    dataLock = True
+    for dataPoint in newDataChain:
+        if(i<dataperblock):
+            outputChain.append(dataPoint)
+            newDataChain.pop()
+        i += 1
+    dataLock = False
+    return(outputChain)
+
 #Blockchain and mining loop
-if __name__ == "__main__" and enableBlockchain:
-    blockchain = Blockchain()       #Setup Blockchain
-    if not blockchain.validate():   #Validate Blockchain
-        err("Blockchain invalid")
+if __name__ == "__main__":
+    minerkeys = Keypair()
+    if (exists(keyfile)):
+        sys("Keyfile found")
+        try:
+            minerkeys.load(keyfile)
+        except exception:
+            err("Could not load minerkeys")
+    else:
+        sys("New keys are generated")
+        minerkeys = Keypair()
+        minerkeys.new()
+        minerkeys.dump(keyfile)
 
-    miningThread = threading.Thread(target=mining)
-    miningThread.start()
+    keypair1 = Keypair()
+    keypair1.new()
+    keypair2 = Keypair()
+    keypair2.new()
 
-    while True:
-        if(keyboard.is_pressed("q")):
-            exitMining = True
-            miningThread.join()
-            break
+    if enableBlockchain:
+        blockchain = Blockchain()       #Setup Blockchain
+        if not blockchain.validate():   #Validate Blockchain
+            err("Blockchain invalid")
+        #Setup mining thread
+        miningThread = threading.Thread(target=mining)
+        miningThread.start()
+        madeTransaction = False
+        #Main Loop with keyboard triggers
+        while True:
+            if(keyboard.is_pressed("t")):
+                madeTransaction = True
+                sys("Transaction triggered")
+                #Create new transaction
+                transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
+                newData = Data()
+                #Push transaction data to miner-thread
+                transaction.sign(keypair1)
+                newData.newTransaction(transaction)
+                pushToMiner(newData)
+
+            if(keyboard.is_pressed("q")):
+                exitMining = True
+                miningThread.join()
+                break
