@@ -11,7 +11,6 @@ Written for a university project.
 - implement multiprocessing-mining
 - add a requirements file
 - change formatting of signature
-- change hashing function
 
 ## What it can do
 - load & save chain as block-files locally
