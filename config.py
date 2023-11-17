@@ -21,5 +21,24 @@ showInfo = True                 #Enable information messages
 showWarn = True                 #Enable warning messages
 showErr = True                  #Enable error messages
 showSys = True                  #Enable system messages
-enableBlockchain = True         #Enable Blockchain, used for development
-enableMining = True             #enable Mining, used for development
+enableBlockchain = True         #Enable blockchain, used for development
+enableMining = True             #Enable mining, used for development
+enableServer = True             #Enable socket server, used for development
+enableClient = True             #Enable socket client, used for development
+
+def info(information):
+    if showInfo:
+        print("[INFO] " + information)
+
+def warning(warning):
+    if showWarn:
+        print("[WARN] " + warning)
+
+def err(error):
+    if showErr:
+        print("[ERR] " + error)
+    exit(69)
+
+def sys(sysmsg):
+    if showSys:
+        print("[SYS] " + sysmsg)
