@@ -6,7 +6,7 @@ Written for a university project.
 ## ToDos
 - implement smart contracts
 - implement automatic difficulty adjustment
-- implement networking capabilitys
+- finish networking capabilitys
 - implement multiprocessing-mining
 - add a requirements file
 - change formatting of signature
@@ -22,3 +22,4 @@ Written for a university project.
 - sign and verify transactions
 - add transactions to blockchain
 - mine in a seperate thread
+- send and receive whole blockchains
