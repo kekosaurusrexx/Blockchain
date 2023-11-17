@@ -2,28 +2,16 @@ from config import *
 ###Predefinded variables
 exitFlag = False
 exitMining = False
-errorMiningThread = False
+exitServer = False
+exitClient = False
 errorSocketServerThread = False
-newDataChain = []
+errorSocketClientThread = False
+errorMiningThread = False
 dataLock = False
+newDataChain = []
+nodeList = []
 
-def info(information):
-    if showInfo:
-        print("[INFO] " + information)
-
-def warning(warning):
-    if showWarn:
-        print("[WARN] " + warning)
-
-def err(error):
-    if showErr:
-        print("[ERR] " + error)
-    exit(69)
-
-def sys(sysmsg):
-    if showSys:
-        print("[SYS] " + sysmsg)
-
+#Important classes for all objects
 class Block:#Class to create a single block
     def __init__(self, index, prevHash, timestamp, data, proof):
         self.index = index
@@ -213,18 +201,22 @@ class Node:
         self.ipaddress = ""
         self.port = 0
         self.lastTimestamp = 0
+        self.chainSize = 0
 
-    def getChain(self):
+    def getChainSize(self):
         clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         serverAddress = (self.ipaddress, self.port)
         clientSocket.connect(serverAddress)
         clientSocket.sendall("chainsize".encode('utf-8'))
         data = clientSocket.recv(64)
-        chainsize = int(data.decode('utf-8'))
+        self.chainSize = int(data.decode('utf-8'))
         clientSocket.close()
+
+    def getChain(self):
+        self.getChainSize()
         i = 0
         receivedBlockchain = Blockchain()
-        while i < chainsize:
+        while i < self.chainSize:
             i += 1
             try:
                 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -243,27 +235,28 @@ class Node:
                 print("Block #" + str(i) + " Exception: " + str(e))
         return(receivedBlockchain)
 
+    def getNodeList(self):
+        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serverAddress = (self.ipaddress, self.port)
+        clientSocket.connect(serverAddress)
+        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        clientSocket.connect(serverAddress)
+        clientSocket.sendall("nodeslist".encode("utf-8"))
+
+        receivedData = b""
+        while True:
+            chunk = clientSocket.recv(1024)
+            if not chunk:
+                break
+            receivedData += chunk
+        newNodesList = pickle.loads(receivedData)
+        return(newNodesList)
+
+
+#Important assisting functions
 def validProof(block):
     guessHash = block.hash()
     return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
-
-def mining():
-    try:
-        sys("Mining thread active")
-        while True:
-            lastBlock = blockchain.get_last_block()
-            data = Data()
-            data.minerData(minerKeys.publicKeyStr)
-            for datapoint in getNewData():
-                data.add(datapoint)
-            blockchain.addBlock(data.dump())
-            if(exitMining):
-                break
-        blockchain.dump()
-        sys("Blockchain saved")
-    except Exception as e:
-        errorMiningThread = True
-        sys("Mining Thread crashed with exception " + str(e))
 
 def pushToMiner(data):
     global dataLock
@@ -286,12 +279,31 @@ def getNewData():
     dataLock = False
     return(outputChain)
 
+#Single thread functions
+def miner():
+    try:
+        sys("Mining thread active")
+        while True:
+            lastBlock = blockchain.get_last_block()
+            data = Data()
+            data.minerData(minerKeys.publicKeyStr)
+            for datapoint in getNewData():
+                data.add(datapoint)
+            blockchain.addBlock(data.dump())
+            if(exitMining):
+                break
+        blockchain.dump()
+        sys("Blockchain saved")
+    except Exception as e:
+        errorMiningThread = True
+        sys("Mining Thread crashed with exception " + str(e))
+
 def socketServer():
     #Setting up the server side
     serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serverSocket.bind((socketServerHost, socketServerPort))
     serverSocket.listen(socketServerClients)
-    sys(f"Server listening on {socketServerHost}:{socketServerPort}")
+    sys(f"Server active on {socketServerHost}:{socketServerPort}")
     while True:
         #If a connection sends bad data that crashes the server, it will just close the connection
         try:
@@ -310,6 +322,9 @@ def socketServer():
                     info("Sending Block #" + str(number))
                 clientSocket.send(pickle.dumps(blockchain.chain[number]))
 
+            if(receivedData=="nodeslist"):
+                clientSocket.send(pickle.dumps(nodeList))
+
             clientSocket.close()
             if(exitFlag==True):
                 sys("Closing socket server")
@@ -317,7 +332,20 @@ def socketServer():
         except Exception as e:
             sys("Socket connection crashed with exception " + str(e))
 
-#Blockchain and mining loop
+def socketClient():
+    try:
+        testNode = Node()
+        testNode.ipaddress = "127.0.0.1"
+        testNode.port = 6969
+        nodeList.append(testNode)
+        time.sleep(3)
+        for node in nodeList:
+            ###
+            ###
+            ###
+    except Exception as e:
+        sys("Socket client crashed with Exception: " + str(e))
+
 if __name__ == "__main__":
     minerKeys = Keypair()
     if (exists(keyfile)):
@@ -331,25 +359,23 @@ if __name__ == "__main__":
         minerKeys.new()
         minerKeys.dump(keyfile)
 
+    #Main loop
     if enableBlockchain:
         blockchain = Blockchain()       #Setup Blockchain
-        if not blockchain.validate():   #Validate Blockchain
-            err("Blockchain invalid")
-        #Setup mining thread
-        miningThread = threading.Thread(target=mining)
+        if not blockchain.validate(): err("Blockchain invalid")
+
+        miningThread = threading.Thread(target=miner)
         socketServer = threading.Thread(target=socketServer)
-        #Starting all threads
-        socketServer.start()
-        if(enableMining):
-            miningThread.start()
-        #Main Loop with keyboard triggers
+        socketClient = threading.Thread(target=socketClient)
+
+        if(enableServer): socketServer.start()
+        if(enableMining): miningThread.start()
+        if(enableClient): socketClient.start()
+
         while True:
-            if(errorSocketServerThread):
-                exitFlag = True
-
-            if(errorMiningThread):
-                exitFlag = True
-
+            if(errorSocketServerThread): exitFlag = True
+            if(errorMiningThread): exitFlag = True
+            if(errorSocketClientThread): exitFlag = True
             if(keyboard.is_pressed("q")):
                 sys("Exit triggered")
                 exitFlag = True
@@ -370,9 +396,6 @@ if __name__ == "__main__":
 
             if(exitFlag):
                 exitMining = True
-                try:
-                    miningThread.join()
-                    socketServer.join()
-                except:
-                    pass
+                exitServer = True
+                exitClient = True
                 break
