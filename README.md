@@ -1,4 +1,4 @@
-# Python Blockchain with smart contracts
+# Python Blockchain
 
 This is a simple proof of concept of a blockchain written in python.
 It aims to correctly implement a blockchain with mining, transactions, smart contracts and networking.
