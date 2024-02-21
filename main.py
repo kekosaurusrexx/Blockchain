@@ -1,130 +1,163 @@
-from config import *
+import hashlib, time
+import pickle
+from os.path import exists
+from queue import Queue
+import os
+import keyboard
+import random
+import json
+import rsa
+import threading
+import socket
+import re
+###Configuration for this node
+miningdifficulty = 5            #Set mining difficulty
+blockchainfolder = "blockchain" #Set path to blockchain folder
+dataperblock = 4                #Number of datapoints per block
+keyfile = "keys"                #Set name of key file
+socketServerHost = "127.0.0.1"  #Socket server host
+socketServerPort = 6969         #Socket server port
+socketServerClients = 10        #Socket server max. clients
+showInfo = True                 #Enable information messages
+showWarn = True                 #Enable warning messages
+showErr = True                  #Enable error messages
+showSys = True                  #Enable system messages
 ###Predefinded variables
-exitFlag = False
-exitMining = False
-exitServer = False
-exitClient = False
-errorSocketServerThread = False
-errorSocketClientThread = False
-errorMiningThread = False
-dataLock = False
-newDataChain = []
-nodeList = []
+exitFlag, newDataChain, nodeList, minerQueue = False, [], [], Queue()
+##Logging functions
+def info(information):
+    if showInfo:
+        print("[INFO] " + information)
 
-#Important classes for all objects
+def warning(warning):
+    if showWarn:
+        print("[WARN] " + warning)
+
+def err(error):
+    if showErr:
+        print("[ERR] " + error)
+    exit(69)
+
+def sys(sysmsg):
+    if showSys:
+        print("[SYS] " + sysmsg)
+#Block class, includes hashing and self
 class Block:#Class to create a single block
-    def __init__(self, index, prevHash, timestamp, data, proof):
+    def __init__(self, index, prevHash, timestamp, data, proof):#Initialize the block
         self.index = index
         self.prevHash = prevHash
         self.timestamp = timestamp
         self.data = data
         self.dataHash = ""
         self.proof = proof
+        self.size = len(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}")
 
-    def hash(self):
+    def hash(self):#Create hash of the block but using hashData instead of hashing the data again
         blockString = f"{self.index}{self.prevHash}{self.timestamp}{self.dataHash}{self.proof}"
         return hashlib.sha256(blockString.encode()).hexdigest()
 
-    def hashData(self):
+    def hashData(self):#Prevents to have the whole data hashed again, this hash can be used for efficency with no tradeoffs
         self.dataHash = hashlib.sha256(self.data.encode()).hexdigest()
 
-    def size(self):
-        return(len(f"{self.index}{self.prevHash}{self.timestamp}{self.data}{self.proof}"))
-
-    def dump(self):
+    def dump(self):#Writing the block to file
         output = open(blockchainfolder + "/" + str(self.index), "wb")
         pickle.dump(self, output)
         output.close()
 
+    def validProof(self):
+        guessHash = self.hash()
+        return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
+
 class Blockchain:#Class to store and use the blockchain
-    def __init__(self):
-        self.chain = []
-        if (exists(blockchainfolder)):
-            if (exists(blockchainfolder + "/0")):
+    def __init__(self):#Initialize the blockchain
+        self.chain = []#Creating the blockchain list
+        if (exists(blockchainfolder)):#Checking if blockchainfolder exists
+            if (exists(blockchainfolder + "/0")):#Checking if genesis block exists
                 self.load()
-            else:
+            else:#If no genesis block exists, create one
                 sys("No Blockchain found")
-                self.create_genesis_block()
-        else:
+                self.createGenesisBlock()
+        else:#If no blockchain exists, create folder and genesis block
             sys("No Blockchain found")
             os.mkdir(blockchainfolder)
+            self.createGenesisBlock()
 
-    def create_genesis_block(self):
+    def createGenesisBlock(self):#Create genesis block with no data
         genesis = Block(0, "0", int(time.time()), "Genesis Block", 0)
         info("Genesis block created")
         self.chain.append(genesis)
 
-    def get_last_block(self):
+    def getLastBlock(self):#Return last block of blockchain
         return self.chain[-1]
 
-    def addBlock(self, data):
+    def addBlock(self, data):#Add block to blockchain, actually includes the mining algorithm
         index = len(self.chain)
-        prevHash = self.get_last_block().hash()
+        prevHash = self.getLastBlock().hash()
         timestamp = int(time.time())
         counter = 0
         proof = 0
         newBlock = Block(index, prevHash, timestamp, data, proof)
         newBlock.hashData()
-        while True:
+        while True:#Bruteforce valid proof
             proof = random.randint(0,999999999999999)
             newBlock.proof = proof
             counter += 1
-            if(validProof(newBlock)):
+            if(newBlock.validProof()):#Check if proof is valid
                 endTime = time.time()
                 try:
                     usedTime= endTime-timestamp
                     hashSpeed = counter/usedTime
-                    info("Block #" + str(index) + " mined | Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s in " + str(round(usedTime,2)) + "s | Size: " + str(newBlock.size()) + " bytes")
+                    info("Block #" + str(index) + " mined | Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s in " + str(round(usedTime,2)) + "s | Size: " + str(newBlock.size) + " bytes")
                 except:
                     warning("Could not calculate Hashspeed")
                 self.chain.append(newBlock)
                 break
 
-    def dump(self):
+    def dump(self):#Go trough each block and dump it to disk
         for block in self.chain:
             block.dump()
 
-    def load(self):
+    def load(self):#Load blockchain from disk
         nBlock = 0
-        while True:
+        while True:#Find the highest id of blocks in the blockchain
             if exists(blockchainfolder+"/"+str(nBlock)):
                 nBlock += 1
             else:
                 break
         nBlock -= 1
-        for i in range(nBlock):
+        for i in range(nBlock):#load the blocks from disk
             with open(blockchainfolder+"/"+str(i), 'rb') as file:
                 block = pickle.load(file)
                 file.close()
             self.chain.append(block)
         sys(str(nBlock) + " blocks loaded")
 
-    def validate(self):
+    def validate(self):#Validate blockchain
         for i in range(1,len(self.chain)):
             if not self.chain[i].prevHash==self.chain[i-1].hash():
                 return False
         return True
 
-class Data:#Class to create and store block-data
-    def __init__(self):
+class Data:#Class to create and store data inside a block
+    def __init__(self):#Initialize datachain
         self.datachain = []
 
-    def dump(self):
+    def dump(self):#Dump data to json
         dataStr = json.dumps(self.datachain)
         return(dataStr)
 
-    def add(self, newData):
+    def add(self, newData):#Add new raw data to datachain
         self.datachain.append(newData)
 
-    def minerData(self, adress):
+    def minerData(self, adress):#Add info about miner to datachain
         minerData = {"type": "miner", "adress": adress}
         self.add(minerData)
 
-    def newText(self, text, sender):
+    def newText(self, text, sender):#Add text to datachain
         textData = {"type": "text", "sender": sender, "content": str(text[:512])}
         self.add(textData)
 
-    def newTransaction(self,transaction):
+    def newTransaction(self,transaction):#Add transaction to datachain
         transactionData = {
             "type": "transaction",
             "sender": transaction.sender,
@@ -135,7 +168,7 @@ class Data:#Class to create and store block-data
         self.add(transactionData)
 
 class Keypair:#Class to store and use keypairs
-    def __init__(self):
+    def __init__(self):#Initialize ke   ypair
         self.publicKey = ""
         self.privateKey = ""
         self.publicKeyStr = ""
@@ -220,7 +253,7 @@ class Node:
             i += 1
             try:
                 clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                clientSocket.connect(serverAddress)
+                clientSocket.connect(self.serverAddress)
                 clientSocket.sendall(("block_" + str(i)).encode("utf-8"))
                 receivedData = b""
                 while True:
@@ -251,54 +284,22 @@ class Node:
             receivedData += chunk
         newNodesList = pickle.loads(receivedData)
         return(newNodesList)
+#Mining function, 
+def functionMiner():
+    sys("Mining thread active")
+    while True:
+        lastBlock = blockchain.getLastBlock()
+        data = Data()
+        data.minerData(minerKeys.publicKeyStr)
+        while not minerQueue.empty():
+            data.add(minerQueue.get())
+        blockchain.addBlock(data.dump())
+        if(exitFlag):
+            break
+    blockchain.dump()
+    sys("Blockchain saved")
 
-
-#Important assisting functions
-def validProof(block):
-    guessHash = block.hash()
-    return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
-
-def pushToMiner(data):
-    global dataLock
-    global newDataChain
-    while (dataLock):
-        info("NewData is locked...")
-    newDataChain.append(data.datachain[0])
-
-def getNewData():
-    global dataLock
-    global newDataChain
-    i = 0
-    outputChain = []
-    dataLock = True
-    for dataPoint in newDataChain:
-        if(i<dataperblock):
-            outputChain.append(dataPoint)
-            newDataChain.pop()
-        i += 1
-    dataLock = False
-    return(outputChain)
-
-#Single thread functions
-def miner():
-    try:
-        sys("Mining thread active")
-        while True:
-            lastBlock = blockchain.get_last_block()
-            data = Data()
-            data.minerData(minerKeys.publicKeyStr)
-            for datapoint in getNewData():
-                data.add(datapoint)
-            blockchain.addBlock(data.dump())
-            if(exitMining):
-                break
-        blockchain.dump()
-        sys("Blockchain saved")
-    except Exception as e:
-        errorMiningThread = True
-        sys("Mining Thread crashed with exception " + str(e))
-
-def socketServer():
+def functionServer():
     #Setting up the server side
     serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serverSocket.bind((socketServerHost, socketServerPort))
@@ -325,6 +326,10 @@ def socketServer():
             if(receivedData=="nodeslist"):
                 clientSocket.send(pickle.dumps(nodeList))
 
+            if(receivedData=="stop"):
+                sys("Exit triggered")
+                exitFlag = True
+            
             clientSocket.close()
             if(exitFlag==True):
                 sys("Closing socket server")
@@ -332,70 +337,54 @@ def socketServer():
         except Exception as e:
             sys("Socket connection crashed with exception " + str(e))
 
-def socketClient():
+def functionClient():
     try:
         testNode = Node()
         testNode.ipaddress = "127.0.0.1"
         testNode.port = 6969
         nodeList.append(testNode)
         time.sleep(3)
-        for node in nodeList:
+        #for node in nodeList:
             ###
             ###
             ###
     except Exception as e:
         sys("Socket client crashed with Exception: " + str(e))
 
-if __name__ == "__main__":
-    minerKeys = Keypair()
-    if (exists(keyfile)):
-        sys("Keyfile found")
-        try:
-            minerKeys.load(keyfile)
-        except exception:
-            err("Could not load minerkeys")
-    else:
-        sys("New keys are generated")
-        minerKeys.new()
-        minerKeys.dump(keyfile)
+minerKeys = Keypair()
+if (exists(keyfile)):
+    sys("Keyfile found")
+    try:
+        minerKeys.load(keyfile)
+    except Exception:
+        err("Could not load minerkeys")
+else:
+    sys("New keys are generated")
+    minerKeys.new()
+    minerKeys.dump(keyfile)
 
-    #Main loop
-    if enableBlockchain:
-        blockchain = Blockchain()       #Setup Blockchain
-        if not blockchain.validate(): err("Blockchain invalid")
+blockchain = Blockchain()       #Setup Blockchain
+if not blockchain.validate(): err("Blockchain invalid") #If blockchain not valid, stop
+#Create all threads for mining and networking
+threadMining = threading.Thread(target=functionMiner)
+threadServer = threading.Thread(target=functionServer)
+threadClient = threading.Thread(target=functionClient)
+#Start the threads
+threadMining.start()
+threadServer.start()
+#threadClient.start()
+while True:
+    if(keyboard.is_pressed("t")):
+        sys("Transaction triggered")
+        keypair1 = Keypair()
+        keypair1.new()
+        keypair2 = Keypair()
+        keypair2.new()
+        transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
+        newData = Data()
+        transaction.sign(keypair1)
+        newData.newTransaction(transaction)
+        minerQueue.put(newData)
 
-        miningThread = threading.Thread(target=miner)
-        socketServer = threading.Thread(target=socketServer)
-        socketClient = threading.Thread(target=socketClient)
-
-        if(enableServer): socketServer.start()
-        if(enableMining): miningThread.start()
-        if(enableClient): socketClient.start()
-
-        while True:
-            if(errorSocketServerThread): exitFlag = True
-            if(errorMiningThread): exitFlag = True
-            if(errorSocketClientThread): exitFlag = True
-            if(keyboard.is_pressed("q")):
-                sys("Exit triggered")
-                exitFlag = True
-
-            if(keyboard.is_pressed("t") and enableMining):
-                sys("Transaction triggered")
-                keypair1 = Keypair()
-                keypair1.new()
-                keypair2 = Keypair()
-                keypair2.new()
-                #Create new transaction
-                transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
-                newData = Data()
-                #Push transaction data to miner-thread
-                transaction.sign(keypair1)
-                newData.newTransaction(transaction)
-                pushToMiner(newData)
-
-            if(exitFlag):
-                exitMining = True
-                exitServer = True
-                exitClient = True
-                break
+    if(exitFlag):
+        break
