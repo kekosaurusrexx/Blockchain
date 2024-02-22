@@ -10,19 +10,18 @@ import rsa
 import threading
 import socket
 import re
-import flask as Flask
+from flask import Flask
 import sqlite3
 #Configuration for this node
 miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
-dataperblock = 4                #Number of datapoints per block
 keyfile = "keys"                #Set name of key file
 socketServerHost = "127.0.0.1"  #Socket server host
-socketServerPort = 6969         #Socket server port
+socketServerPort = 420          #Socket server port
 socketServerClients = 10        #Socket server max. clients
 debugMode = True                #Changing logging depth
-##Logging functions
-class Log:#Logging functions
+
+class Log:          #Logging functions
     def info(information):
         if debugMode:
             print("[INFO] " + information)
@@ -38,7 +37,7 @@ class Log:#Logging functions
         if debugMode:
             print("[DEB] " + sysmsg)
 
-class Block:#Class to create a single block
+class Block:        #Class to create a single block
     def __init__(self, index, prevHash, timestamp, data, proof):#Initialize the block
         self.index = index
         self.prevHash = prevHash
@@ -64,7 +63,7 @@ class Block:#Class to create a single block
         guessHash = self.hash()
         return (guessHash[:miningdifficulty] == "0"*miningdifficulty)
 
-class Blockchain:#Class to store and use the blockchain
+class Blockchain:   #Class to store and use the blockchain
     def __init__(self):#Initialize the blockchain
         self.chain = []#Creating the blockchain list
         if (exists(blockchainfolder)):#Checking if blockchainfolder exists
@@ -136,7 +135,7 @@ class Blockchain:#Class to store and use the blockchain
                 return False
         return True
 
-class Data:#Class to create and store data inside a block
+class Data:         #Class to create and store data inside a block
     def __init__(self):#Initialize datachain
         self.datachain = []
 
@@ -165,7 +164,7 @@ class Data:#Class to create and store data inside a block
             "timestamp": str(time.time())}
         self.add(transactionData)
 
-class Keypair:#Class to store and use keypairs
+class Keypair:      #Class to store and use keypairs
     def __init__(self):#Initialize ke   ypair
         self.publicKey = ""
         self.privateKey = ""
@@ -222,7 +221,7 @@ class Keypair:#Class to store and use keypairs
             self.new()
             self.dump(keyfile)
 
-class Transaction:#Class to store and execute a transaction
+class Transaction:  #Class to store and execute a transaction
     def __init__(self, sender, receiver, value):
         self.sender = sender
         self.receiver = receiver
@@ -239,7 +238,7 @@ class Transaction:#Class to store and execute a transaction
     def sign(self, keypair):
         self.signature = keypair.sign(self.hash())
 
-class Node:#Class to manage node connections
+class Node:     #Class to manage node connections
     def __init__(self):
         self.ipaddress = ""
         self.port = 0
@@ -345,12 +344,12 @@ def functionServer():#Socket server function
             if(receivedData=="tt"):
                 Log.debug("Transaction triggered")
                 keypair1 = Keypair()
-                keypair1.new()
                 keypair2 = Keypair()
+                keypair1.new()
                 keypair2.new()
                 transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
-                newData = Data()
                 transaction.sign(keypair1)
+                newData = Data()
                 newData.newTransaction(transaction)
                 minerQueue.put(newData)
             clientSocket.close()
@@ -360,18 +359,6 @@ def functionServer():#Socket server function
 
 def functionClient():#Socket client function
     global exitFlag
-    while not exitFlag:
-        try:
-            testNode = Node()
-            testNode.ipaddress = "127.0.0.1"
-            testNode.port = 6969
-            nodeList.append(testNode)
-        except Exception as e:
-            Log.warning("Socket client crashed with Exception: " + str(e))
-
-def functionWebsite():
-    global exitFlag
-    pass
 
 #Variables, do not change
 exitFlag = False
@@ -386,16 +373,13 @@ minerKeys.minerkeys()
 threadMining = threading.Thread(target=functionMiner)
 threadServer = threading.Thread(target=functionServer)
 threadClient = threading.Thread(target=functionClient)
-threadWebsite = threading.Thread(target=functionWebsite)
 #Starting all threads
 threadMining.start()
 threadServer.start()
 threadClient.start()
-threadWebsite.start()
 Log.info("Started successful")
 #Waiting for the threads
 threadMining.join()
 threadServer.join()
 threadClient.join()
-threadWebsite.join()
 Log.debug("Stopped succesful")
