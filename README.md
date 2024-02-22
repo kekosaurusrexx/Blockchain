@@ -4,6 +4,14 @@ This is a simple proof of concept of a blockchain written in python.
 It aims to implement a blockchain with mining, transactions, smart contracts and networking.
 Written for a university project.
 
+## Usage
+
+Start the server script main.py.
+If debug mode is enabled, following commands can be send with console.py:
+
+- tt: send a test transaction (development only)
+- stop: stop the server
+
 ## ToDos
 
 - implement smart contracts
