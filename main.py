@@ -10,7 +10,6 @@ import rsa
 import threading
 import socket
 import re
-from flask import Flask
 import sqlite3
 #Configuration for this node
 miningdifficulty = 5            #Set mining difficulty
@@ -19,7 +18,7 @@ keyfile = "keys"                #Set name of key file
 socketServerHost = "127.0.0.1"  #Socket server host
 socketServerPort = 420          #Socket server port
 socketServerClients = 10        #Socket server max. clients
-debugMode = True                #Changing logging depth
+debugMode = True                #Changing logging and functions
 
 class Log:          #Logging functions
     def info(information):
@@ -337,11 +336,11 @@ def functionServer():#Socket server function
                 Log.debug("Requested: Nodeslist")
                 clientSocket.send(pickle.dumps(nodeList))
             #Only for testing, stop server with this command
-            if(receivedData=="stop"):
+            if(receivedData=="stop" and debugMode):
                 Log.debug("Exit triggered")
                 exitFlag = True
             #Only for testing, trigger test transaction
-            if(receivedData=="tt"):
+            if(receivedData=="tt" and debugMode):
                 Log.debug("Transaction triggered")
                 keypair1 = Keypair()
                 keypair2 = Keypair()
@@ -351,7 +350,7 @@ def functionServer():#Socket server function
                 transaction.sign(keypair1)
                 newData = Data()
                 newData.newTransaction(transaction)
-                minerQueue.put(newData)
+                minerQueue.put(newData.datachain[0])
             clientSocket.close()
         except Exception as e:
             Log.warning("Socket server crashed with Exception: " + str(e))
