@@ -3,14 +3,13 @@ import pickle
 from os.path import exists
 from queue import Queue
 import os
-import keyboard
 import random
 import json
 import rsa
 import threading
 import socket
 import re
-###Configuration for this node
+#Configuration for this node
 miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
 dataperblock = 4                #Number of datapoints per block
@@ -18,29 +17,23 @@ keyfile = "keys"                #Set name of key file
 socketServerHost = "127.0.0.1"  #Socket server host
 socketServerPort = 6969         #Socket server port
 socketServerClients = 10        #Socket server max. clients
-showInfo = True                 #Enable information messages
-showWarn = True                 #Enable warning messages
-showErr = True                  #Enable error messages
-showSys = True                  #Enable system messages
-###Predefinded variables
-exitFlag, newDataChain, nodeList, minerQueue = False, [], [], Queue()
+debugMode = True                #Changing logging depth
 ##Logging functions
-def info(information):
-    if showInfo:
-        print("[INFO] " + information)
+class Log:
+    def info(information):
+        if debugMode:
+            print("[INFO] " + information)
 
-def warning(warning):
-    if showWarn:
+    def warning(warning):
         print("[WARN] " + warning)
 
-def err(error):
-    if showErr:
+    def error(error):
         print("[ERR] " + error)
-    exit(69)
+        exit(69)
 
-def sys(sysmsg):
-    if showSys:
-        print("[SYS] " + sysmsg)
+    def debug(sysmsg):
+        if debugMode:
+            print("[SYS] " + sysmsg)
 #Block class, includes hashing and self
 class Block:#Class to create a single block
     def __init__(self, index, prevHash, timestamp, data, proof):#Initialize the block
@@ -75,16 +68,16 @@ class Blockchain:#Class to store and use the blockchain
             if (exists(blockchainfolder + "/0")):#Checking if genesis block exists
                 self.load()
             else:#If no genesis block exists, create one
-                sys("No Blockchain found")
+                Log.info("No Blockchain found")
                 self.createGenesisBlock()
         else:#If no blockchain exists, create folder and genesis block
-            sys("No Blockchain found")
+            Log.info("No Blockchain found")
             os.mkdir(blockchainfolder)
             self.createGenesisBlock()
 
     def createGenesisBlock(self):#Create genesis block with no data
         genesis = Block(0, "0", int(time.time()), "Genesis Block", 0)
-        info("Genesis block created")
+        Log.debug("Genesis block created")
         self.chain.append(genesis)
 
     def getLastBlock(self):#Return last block of blockchain
@@ -107,9 +100,9 @@ class Blockchain:#Class to store and use the blockchain
                 try:
                     usedTime= endTime-timestamp
                     hashSpeed = counter/usedTime
-                    info("Block #" + str(index) + " mined | Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s in " + str(round(usedTime,2)) + "s | Size: " + str(newBlock.size) + " bytes")
+                    Log.debug("Block #" + str(index) + " mined | Hashspeed: " + str(round(hashSpeed / 1000)) + "kH/s in " + str(round(usedTime,2)) + "s | Size: " + str(newBlock.size) + " bytes")
                 except:
-                    warning("Could not calculate Hashspeed")
+                    Log.warning("Could not calculate Hashspeed")
                 self.chain.append(newBlock)
                 break
 
@@ -130,7 +123,7 @@ class Blockchain:#Class to store and use the blockchain
                 block = pickle.load(file)
                 file.close()
             self.chain.append(block)
-        sys(str(nBlock) + " blocks loaded")
+        Log.debug(str(nBlock) + " blocks loaded")
 
     def validate(self):#Validate blockchain
         for i in range(1,len(self.chain)):
@@ -212,6 +205,18 @@ class Keypair:#Class to store and use keypairs
         self.privateKey = loadedkey.privateKey
         self.privateKeyStr = loadedkey.privateKeyStr
 
+    def minerkeys(self):
+        if (exists(keyfile)):
+            Log.debug("Keyfile found")
+            try:
+                self.load(keyfile)
+            except Exception:
+                Log.error("Could not load minerkeys")
+        else:
+            Log.info("New keys are generated")
+            self.new()
+            self.dump(keyfile)
+
 class Transaction:#Class to store and execute a transaction
     def __init__(self, sender, receiver, value):
         self.sender = sender
@@ -229,7 +234,7 @@ class Transaction:#Class to store and execute a transaction
     def sign(self, keypair):
         self.signature = keypair.sign(self.hash())
 
-class Node:
+class Node:#Class to manage node connections
     def __init__(self):
         self.ipaddress = ""
         self.port = 0
@@ -284,9 +289,9 @@ class Node:
             receivedData += chunk
         newNodesList = pickle.loads(receivedData)
         return(newNodesList)
-#Mining function, 
-def functionMiner():
-    sys("Mining thread active")
+
+def functionMiner():#Mining function
+    Log.debug("Mining thread active")
     while True:
         lastBlock = blockchain.getLastBlock()
         data = Data()
@@ -297,14 +302,14 @@ def functionMiner():
         if(exitFlag):
             break
     blockchain.dump()
-    sys("Blockchain saved")
+    Log.info("Blockchain saved")
 
-def functionServer():
+def functionServer():#Socket server function
     #Setting up the server side
     serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serverSocket.bind((socketServerHost, socketServerPort))
     serverSocket.listen(socketServerClients)
-    sys(f"Server active on {socketServerHost}:{socketServerPort}")
+    Log.debug(f"Server active on {socketServerHost}:{socketServerPort}")
     while True:
         #If a connection sends bad data that crashes the server, it will just close the connection
         try:
@@ -312,7 +317,7 @@ def functionServer():
             receivedData = clientSocket.recv(64).decode("utf-8")
             #Send size of current chain if requested
             if(receivedData=="chainsize"):
-                info("Sending chainsize")
+                Log.debug("Sending chainsize")
                 clientSocket.send(str(len(blockchain.chain)-1).encode("utf-8"))
             #Send block with id x
             if(receivedData.startswith("block")):
@@ -320,71 +325,68 @@ def functionServer():
                 match = pattern.match(receivedData)
                 if match:
                     number = int(match.group(1))
-                    info("Sending Block #" + str(number))
+                    Log.debug("Sending Block #" + str(number))
                 clientSocket.send(pickle.dumps(blockchain.chain[number]))
-
+            #Send list of nodes
             if(receivedData=="nodeslist"):
                 clientSocket.send(pickle.dumps(nodeList))
-
+            #Only for testing, stop server with this command
             if(receivedData=="stop"):
-                sys("Exit triggered")
+                Log.debug("Exit triggered")
                 exitFlag = True
-            
+            #Only for testing, trigger test transaction
+            if(receivedData=="tt"):
+                Log.debug("Transaction triggered")
+                keypair1 = Keypair()
+                keypair1.new()
+                keypair2 = Keypair()
+                keypair2.new()
+                transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
+                newData = Data()
+                transaction.sign(keypair1)
+                newData.newTransaction(transaction)
+                minerQueue.put(newData)
+
             clientSocket.close()
             if(exitFlag==True):
-                sys("Closing socket server")
+                Log.debug("Closing socket server")
                 break
         except Exception as e:
-            sys("Socket connection crashed with exception " + str(e))
+            Log.warning("Socket connection crashed with exception " + str(e))
 
-def functionClient():
+def functionClient():#Socket client function
     try:
         testNode = Node()
         testNode.ipaddress = "127.0.0.1"
         testNode.port = 6969
         nodeList.append(testNode)
-        time.sleep(3)
         #for node in nodeList:
             ###
             ###
             ###
     except Exception as e:
-        sys("Socket client crashed with Exception: " + str(e))
-
+        Log.warning("Socket client crashed with Exception: " + str(e))
+#Variables, do not change
+exitFlag = False
+newDataChain = []
+nodeList = []
+minerQueue = Queue()
+blockchain = Blockchain()
 minerKeys = Keypair()
-if (exists(keyfile)):
-    sys("Keyfile found")
-    try:
-        minerKeys.load(keyfile)
-    except Exception:
-        err("Could not load minerkeys")
-else:
-    sys("New keys are generated")
-    minerKeys.new()
-    minerKeys.dump(keyfile)
-
-blockchain = Blockchain()       #Setup Blockchain
-if not blockchain.validate(): err("Blockchain invalid") #If blockchain not valid, stop
-#Create all threads for mining and networking
 threadMining = threading.Thread(target=functionMiner)
 threadServer = threading.Thread(target=functionServer)
 threadClient = threading.Thread(target=functionClient)
-#Start the threads
+#Validating blockchain & keys
+if not blockchain.validate(): Log.error("Blockchain invalid")
+minerKeys.minerkeys()
+#Start all threads
 threadMining.start()
 threadServer.start()
-#threadClient.start()
+threadClient.start()
+#Main control loop
 while True:
-    if(keyboard.is_pressed("t")):
-        sys("Transaction triggered")
-        keypair1 = Keypair()
-        keypair1.new()
-        keypair2 = Keypair()
-        keypair2.new()
-        transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
-        newData = Data()
-        transaction.sign(keypair1)
-        newData.newTransaction(transaction)
-        minerQueue.put(newData)
-
     if(exitFlag):
+        threadMining.join()
+        threadServer.join()
+        threadClient.join()
         break
