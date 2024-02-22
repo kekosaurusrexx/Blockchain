@@ -1,4 +1,5 @@
-import hashlib, time
+import hashlib
+import time
 import pickle
 from os.path import exists
 from queue import Queue
@@ -9,6 +10,8 @@ import rsa
 import threading
 import socket
 import re
+import flask as Flask
+import sqlite3
 #Configuration for this node
 miningdifficulty = 5            #Set mining difficulty
 blockchainfolder = "blockchain" #Set path to blockchain folder
@@ -19,7 +22,7 @@ socketServerPort = 6969         #Socket server port
 socketServerClients = 10        #Socket server max. clients
 debugMode = True                #Changing logging depth
 ##Logging functions
-class Log:
+class Log:#Logging functions
     def info(information):
         if debugMode:
             print("[INFO] " + information)
@@ -33,8 +36,8 @@ class Log:
 
     def debug(sysmsg):
         if debugMode:
-            print("[SYS] " + sysmsg)
-#Block class, includes hashing and self
+            print("[DEB] " + sysmsg)
+
 class Block:#Class to create a single block
     def __init__(self, index, prevHash, timestamp, data, proof):#Initialize the block
         self.index = index
@@ -125,9 +128,11 @@ class Blockchain:#Class to store and use the blockchain
             self.chain.append(block)
         Log.debug(str(nBlock) + " blocks loaded")
 
-    def validate(self):#Validate blockchain
+    def validate(self,stop=False):#Validate blockchain
         for i in range(1,len(self.chain)):
             if not self.chain[i].prevHash==self.chain[i-1].hash():
+                if stop:
+                    Log.error("Blockchain invalid")
                 return False
         return True
 
@@ -291,33 +296,34 @@ class Node:#Class to manage node connections
         return(newNodesList)
 
 def functionMiner():#Mining function
+    global exitFlag
+    global minerQueue
+    global blockchain
     Log.debug("Mining thread active")
-    while True:
-        lastBlock = blockchain.getLastBlock()
+    while not exitFlag:
         data = Data()
         data.minerData(minerKeys.publicKeyStr)
         while not minerQueue.empty():
             data.add(minerQueue.get())
         blockchain.addBlock(data.dump())
-        if(exitFlag):
-            break
     blockchain.dump()
     Log.info("Blockchain saved")
 
 def functionServer():#Socket server function
-    #Setting up the server side
+    global exitFlag
+    global minerQueue
+    global blockchain
     serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     serverSocket.bind((socketServerHost, socketServerPort))
     serverSocket.listen(socketServerClients)
-    Log.debug(f"Server active on {socketServerHost}:{socketServerPort}")
-    while True:
-        #If a connection sends bad data that crashes the server, it will just close the connection
+    Log.debug(f"Server thread active on {socketServerHost}:{socketServerPort}")
+    while not exitFlag:
         try:
             clientSocket, addr = serverSocket.accept()
             receivedData = clientSocket.recv(64).decode("utf-8")
             #Send size of current chain if requested
             if(receivedData=="chainsize"):
-                Log.debug("Sending chainsize")
+                Log.debug("Requested: chainsize")
                 clientSocket.send(str(len(blockchain.chain)-1).encode("utf-8"))
             #Send block with id x
             if(receivedData.startswith("block")):
@@ -325,10 +331,11 @@ def functionServer():#Socket server function
                 match = pattern.match(receivedData)
                 if match:
                     number = int(match.group(1))
-                    Log.debug("Sending Block #" + str(number))
+                    Log.debug("Requested: Block " + str(number))
                 clientSocket.send(pickle.dumps(blockchain.chain[number]))
             #Send list of nodes
             if(receivedData=="nodeslist"):
+                Log.debug("Requested: Nodeslist")
                 clientSocket.send(pickle.dumps(nodeList))
             #Only for testing, stop server with this command
             if(receivedData=="stop"):
@@ -346,47 +353,49 @@ def functionServer():#Socket server function
                 transaction.sign(keypair1)
                 newData.newTransaction(transaction)
                 minerQueue.put(newData)
-
             clientSocket.close()
-            if(exitFlag==True):
-                Log.debug("Closing socket server")
-                break
         except Exception as e:
-            Log.warning("Socket connection crashed with exception " + str(e))
+            Log.warning("Socket server crashed with Exception: " + str(e))
+    Log.debug("Server closed")
 
 def functionClient():#Socket client function
-    try:
-        testNode = Node()
-        testNode.ipaddress = "127.0.0.1"
-        testNode.port = 6969
-        nodeList.append(testNode)
-        #for node in nodeList:
-            ###
-            ###
-            ###
-    except Exception as e:
-        Log.warning("Socket client crashed with Exception: " + str(e))
+    global exitFlag
+    while not exitFlag:
+        try:
+            testNode = Node()
+            testNode.ipaddress = "127.0.0.1"
+            testNode.port = 6969
+            nodeList.append(testNode)
+        except Exception as e:
+            Log.warning("Socket client crashed with Exception: " + str(e))
+
+def functionWebsite():
+    global exitFlag
+    pass
+
 #Variables, do not change
 exitFlag = False
-newDataChain = []
 nodeList = []
 minerQueue = Queue()
 blockchain = Blockchain()
 minerKeys = Keypair()
+#Validating blockchain & keys
+blockchain.validate(True)
+minerKeys.minerkeys()
+#Setting up the threads
 threadMining = threading.Thread(target=functionMiner)
 threadServer = threading.Thread(target=functionServer)
 threadClient = threading.Thread(target=functionClient)
-#Validating blockchain & keys
-if not blockchain.validate(): Log.error("Blockchain invalid")
-minerKeys.minerkeys()
-#Start all threads
+threadWebsite = threading.Thread(target=functionWebsite)
+#Starting all threads
 threadMining.start()
 threadServer.start()
 threadClient.start()
-#Main control loop
-while True:
-    if(exitFlag):
-        threadMining.join()
-        threadServer.join()
-        threadClient.join()
-        break
+threadWebsite.start()
+Log.info("Started successful")
+#Waiting for the threads
+threadMining.join()
+threadServer.join()
+threadClient.join()
+threadWebsite.join()
+Log.debug("Stopped succesful")
