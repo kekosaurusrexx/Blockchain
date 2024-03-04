@@ -1,14 +1,8 @@
-import socket
-
-host = "127.0.0.1"
-port = 420
-
+from modules import *
+con = Connection("localhost",420)
 while True:
-    inputstr = input()
+    inputstr = input(">> ")
     try:
-        s = socket.socket()
-        s.connect((host, port))
-        s.send(inputstr.encode("UTF-8"))
-        s.close()
+        print(f"< {con.fetch(inputstr)}")
     except:
-        print("Could not send command")
+        print("< Error sending command")
