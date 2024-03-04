@@ -30,7 +30,7 @@ def functionServer():#Socket server function
             #Send size of current chain if requested
             if(receivedData=="chainsize"):
                 Log.debug("Requested: chainsize")
-                clientSocket.send(str(len(blockchain.chain)-1).encode("utf-8"))
+                clientSocket.send(str(blockchain.getlength()).encode("utf-8"))
             #Send block with id x
             if(receivedData.startswith("block")):
                 pattern = re.compile(r'^block_(\d+)')
@@ -43,28 +43,32 @@ def functionServer():#Socket server function
             if(receivedData=="nodeslist"):
                 Log.debug("Requested: Nodeslist")
                 clientSocket.send(pickle.dumps(nodeList))
-            if(receivedData.startswith("data_")):
-                print("Data received")
-                receivedData[5:]
-                newData = Data()
-                newData.add(receivedData)
-                minerQueue.put(newData.datachain[0])
-            #Only for testing, stop server with this command
-            if(receivedData=="stop" and debugMode):
-                Log.debug("Exit triggered")
-                exitFlag = True
-            #Only for testing, trigger test transaction
-            if(receivedData=="tt" and debugMode):
-                Log.debug("Transaction triggered")
-                keypair1 = Keypair()
-                keypair2 = Keypair()
-                keypair1.new()
-                keypair2.new()
-                transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
-                transaction.sign(keypair1)
-                newData = Data()
-                newData.newTransaction(transaction)
-                minerQueue.put(newData.datachain[0])
+            #Add data of no type to the blockchain
+            if(debugMode):
+                if(receivedData=="hashrate"):
+                    connec
+                if(receivedData.startswith("data_")):
+                    Log.debug("Data received")
+                    receivedData[5:]
+                    newData = Data()
+                    newData.add(receivedData)
+                    minerQueue.put(newData.datachain[0])
+                #Only for testing, stop server with this command
+                if(receivedData=="stop"):
+                    Log.debug("Stop triggered")
+                    exitFlag = True
+                #Only for testing, trigger test transaction
+                if(receivedData=="tt"):
+                    Log.debug("Transaction triggered")
+                    keypair1 = Keypair()
+                    keypair2 = Keypair()
+                    keypair1.new()
+                    keypair2.new()
+                    transaction = Transaction(keypair1.publicKeyStr, keypair2.publicKeyStr, "1000")
+                    transaction.sign(keypair1)
+                    newData = Data()
+                    newData.newTransaction(transaction)
+                    minerQueue.put(newData.datachain[0])
             clientSocket.close()
         except Exception as e:
             Log.warning("Socket server crashed with Exception: " + str(e))
