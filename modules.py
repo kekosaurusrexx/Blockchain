@@ -1,10 +1,9 @@
+from tracemalloc import start
 from config import *
+from queue import Queue
 import hashlib
 import time
 import pickle
-from os.path import exists
-from queue import Queue
-import os
 import random
 import json
 import rsa
@@ -15,8 +14,7 @@ import sqlite3
 
 class Log:          #Logging functions
     def info(information):
-        if debugMode:
-            print("[INFO] " + information)
+        print("[INFO] " + information)
 
     def warning(warning):
         print("[WARN] " + warning)
@@ -29,7 +27,7 @@ class Log:          #Logging functions
         if debugMode:
             print("[DEBUG] " + sysmsg)
 
-class Connection:   #Class for easy networking
+class Connection:   #Networking functions
     def __init__(self, ip, port):
         self.ip = ip
         self.port = port
@@ -38,6 +36,7 @@ class Connection:   #Class for easy networking
         try:
             clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             serverAddress = (self.ip, self.port)
+            clientSocket.settimeout(15)
             clientSocket.connect(serverAddress)
             clientSocket.sendall(command.encode('utf-8'))
             receivedData = b""
@@ -51,7 +50,26 @@ class Connection:   #Class for easy networking
         except Exception as e:
             Log.debug("Fetch failed" + e)
 
-class Block:        #Class to create a single block
+    def fetchobj(self, command):
+        try:
+            clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            serverAddress = (self.ip, self.port)
+            clientSocket.settimeout(15)
+            clientSocket.connect(serverAddress)
+            clientSocket.sendall(command.encode('utf-8'))
+            receivedData = b""
+            while True:
+                chunk = clientSocket.recv(1024)
+                if not chunk:
+                    break
+                receivedData += chunk
+            clientSocket.close() 
+            return pickle.loads(receivedData)
+        except Exception as e:
+            Log.debug("Fetch failed" + e)
+
+
+class Block:        #Block class for hashing
     def __init__(self, index, prevHash, timestamp, data, proof):#Initialize the block
         self.index = index
         self.prevHash = prevHash
@@ -99,7 +117,7 @@ class Blockchain:   #Class to store and use the blockchain
         dbcon.commit()
         dbcon.close()
 
-    def getlength(self):
+    def getlength(self):#Get length of chain
         dbcon = sqlite3.connect(blockchaindb)
         dbcur = dbcon.cursor()
         dbcur.execute(f"SELECT COUNT(*) FROM {blockchaintable}")
@@ -107,12 +125,12 @@ class Blockchain:   #Class to store and use the blockchain
         dbcon.close()
         return(length)
 
-    def createGenesisBlock(self):#Create genesis block with no data
+    def createGenesisBlock(self):#Create genesis block
         genesis = Block(1, "0", int(time.time()), "Genesis Block", 0)
         Log.debug("Genesis block created")
         self.write(genesis)
 
-    def validate(self,stop=False):#Validate blockchain
+    def validate(self,stop=False):#Validate current blockchain
         if(self.getlength()==0):
             self.createGenesisBlock()
         for i in range(2,self.getlength()):
@@ -122,10 +140,11 @@ class Blockchain:   #Class to store and use the blockchain
                 return False
         return True
 
-    def getLastBlock(self):#Return last block of blockchain
+    def getLastBlock(self):#Return latest block of blockchain
         return self.read(self.getlength())
 
-    def addBlock(self, data):#Add block to blockchain, actually includes the mining algorithm
+    def addBlock(self, data):#Mine block and add to blockchain
+        global kHashPerSec
         index = self.getlength()+1
         prevHash = self.getLastBlock().hash()
         timestamp = int(time.time())
@@ -145,7 +164,7 @@ class Blockchain:   #Class to store and use the blockchain
                 self.write(newBlock)
                 break
     
-class Data:         #Class to create and store data inside a block
+class Data:         #Class that handles the data in a block
     def __init__(self):#Initialize datachain
         self.datachain = []
 
